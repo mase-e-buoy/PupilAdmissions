@@ -1,0 +1,54 @@
+@page
+@model PupilAdmissions.Web.Pages.Pupils.IndexModel
+@using PupilAdmissions.Domain
+@{
+    ViewData["Title"] = "Pupil roster";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p>
+    <a asp-page="Create" class="btn btn-primary">Create pupil</a>
+</p>
+
+<form method="get" class="row row-cols-lg-auto g-3 align-items-center mb-3">
+    <div class="col-12">
+        <label for="yearGroup" class="form-label me-2">Year group</label>
+        <select id="yearGroup" name="yearGroup" class="form-select" onchange="this.form.submit()">
+            <option value="">All year groups</option>
+            @foreach (YearGroup yg in Enum.GetValues<YearGroup>())
+            {
+                <option value="@yg" selected="@(Model.YearGroupFilter == yg)">@yg.ToDisplayName()</option>
+            }
+        </select>
+    </div>
+</form>
+
+@if (!Model.PupilsByYearGroup.Any())
+{
+    <p><em>No pupils recorded yet.</em></p>
+}
+
+@foreach (var group in Model.PupilsByYearGroup)
+{
+    <h2 class="h4 mt-4">@group.Key.ToDisplayName()</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Boarding type</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var pupil in group)
+            {
+                <tr>
+                    <td>@pupil.Name</td>
+                    <td>@pupil.BoardingType.ToDisplayName()</td>
+                    <td>@pupil.Status.ToDisplayName()</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

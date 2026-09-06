@@ -1,0 +1,34 @@
+# Build outputs
+bin/
+obj/
+[Bb]uild/
+[Bb]uildResults/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test results
+TestResults/
+*.trx
+
+# .NET tooling
+project.lock.json
+packages/
+*.nupkg
+
+# Local configuration/secrets
+appsettings.Local.json
+secrets.json
+*.db
+*.sqlite
+*.db-shm
+*.db-wal
+
+# OS files
+.DS_Store
+Thumbs.db
