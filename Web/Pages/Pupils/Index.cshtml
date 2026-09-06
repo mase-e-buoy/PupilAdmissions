@@ -38,6 +38,7 @@
                 <th>Name</th>
                 <th>Boarding type</th>
                 <th>Status</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -47,6 +48,7 @@
                     <td>@pupil.Name</td>
                     <td>@pupil.BoardingType.ToDisplayName()</td>
                     <td>@pupil.Status.ToDisplayName()</td>
+                    <td><a asp-page="Edit" asp-route-id="@pupil.Id" class="btn btn-sm btn-outline-secondary">Edit</a></td>
                 </tr>
             }
         </tbody>

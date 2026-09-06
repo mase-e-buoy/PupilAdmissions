@@ -225,6 +225,245 @@ public class PupilServiceTests : IDisposable
         Assert.Contains(roster, p => p.Id == pupil.Id && p.Name == "Katherine Johnson");
     }
 
+    [Fact]
+    public async Task UpdatePupilAsync_SingleFieldEdit_WritesExactlyOneCorrectChangeHistoryRow()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Rosalind Franklin",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+        });
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = PupilStatus.LeaverNoticeGiven,
+        });
+
+        Assert.NotNull(updated);
+        Assert.Equal(PupilStatus.LeaverNoticeGiven, updated!.Status);
+
+        // Other three fields untouched.
+        Assert.Equal("Rosalind Franklin", updated.Name);
+        Assert.Equal(YearGroup.Year7, updated.YearGroup);
+        Assert.Equal(BoardingType.Day, updated.BoardingType);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+
+        var history = Assert.Single(editHistories);
+        Assert.Equal(nameof(Pupil.Status), history.FieldName);
+        Assert.Equal("Joiner", history.PreviousValue);
+        Assert.Equal("Leaver — notice given", history.NewValue);
+        Assert.Equal(ApplicationUser.SystemActorId, history.ActorId);
+        Assert.Equal(DateTimeKind.Utc, history.ChangedAtUtc.Kind);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_MultiFieldEdit_WritesExactlyOneRowPerChangedField()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Chien-Shiung Wu",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+        });
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = YearGroup.Year9,
+            BoardingType = pupil.BoardingType,
+            Status = PupilStatus.LeaverNoticeGiven,
+        });
+
+        Assert.NotNull(updated);
+        Assert.Equal(YearGroup.Year9, updated!.YearGroup);
+        Assert.Equal(PupilStatus.LeaverNoticeGiven, updated.Status);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+
+        Assert.Equal(2, editHistories.Count);
+
+        var byField = editHistories.ToDictionary(h => h.FieldName);
+        Assert.Equal("Year 7", byField[nameof(Pupil.YearGroup)].PreviousValue);
+        Assert.Equal("Year 9", byField[nameof(Pupil.YearGroup)].NewValue);
+        Assert.Equal("Joiner", byField[nameof(Pupil.Status)].PreviousValue);
+        Assert.Equal("Leaver — notice given", byField[nameof(Pupil.Status)].NewValue);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_NoOpSave_WritesZeroChangeHistoryRowsAndLeavesPupilUnchanged()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Marie Curie",
+            YearGroup = YearGroup.Year8,
+            BoardingType = BoardingType.FullBoard,
+            Status = PupilStatus.Joiner,
+        });
+
+        var beforeHistoryCount = await db.ChangeHistories.CountAsync(ch => ch.PupilId == pupil.Id);
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+        });
+
+        Assert.NotNull(updated);
+
+        var afterHistoryCount = await db.ChangeHistories.CountAsync(ch => ch.PupilId == pupil.Id);
+        Assert.Equal(beforeHistoryCount, afterHistoryCount);
+
+        var reloaded = await db.Pupils.AsNoTracking().SingleAsync(p => p.Id == pupil.Id);
+        Assert.Equal("Marie Curie", reloaded.Name);
+        Assert.Equal(YearGroup.Year8, reloaded.YearGroup);
+        Assert.Equal(BoardingType.FullBoard, reloaded.BoardingType);
+        Assert.Equal(PupilStatus.Joiner, reloaded.Status);
+    }
+
+    [Theory]
+    [InlineData("Name")]
+    [InlineData("YearGroup")]
+    [InlineData("BoardingType")]
+    [InlineData("Status")]
+    public async Task UpdatePupilAsync_MissingRequiredField_ThrowsAndSavesNothing(string missingField)
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Dorothy Hodgkin",
+            YearGroup = YearGroup.Year9,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+        });
+
+        var request = new UpdatePupilRequest
+        {
+            Name = missingField == "Name" ? "" : "Dorothy Hodgkin (edited)",
+            YearGroup = missingField == "YearGroup" ? null : YearGroup.Year10,
+            BoardingType = missingField == "BoardingType" ? null : BoardingType.FullBoard,
+            Status = missingField == "Status" ? null : PupilStatus.LeaverNoticeGiven,
+        };
+
+        await Assert.ThrowsAsync<ValidationException>(() => service.UpdatePupilAsync(pupil.Id, request));
+
+        var reloaded = await db.Pupils.AsNoTracking().SingleAsync(p => p.Id == pupil.Id);
+        Assert.Equal("Dorothy Hodgkin", reloaded.Name);
+        Assert.Equal(YearGroup.Year9, reloaded.YearGroup);
+        Assert.Equal(BoardingType.Day, reloaded.BoardingType);
+        Assert.Equal(PupilStatus.Joiner, reloaded.Status);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+        Assert.Empty(editHistories);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_UnknownId_ReturnsNull()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var result = await service.UpdatePupilAsync(999, new UpdatePupilRequest
+        {
+            Name = "Nobody",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+        });
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_ConcurrentEditsToSamePupil_BothApplyWithoutError()
+    {
+        await using var seedDb = CreateContext();
+        var seedService = new PupilService(seedDb);
+        var pupil = await seedService.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Shared Pupil",
+            YearGroup = YearGroup.Year10,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+        });
+
+        // Two distinct DbContext/PupilService instances editing the same
+        // pupil concurrently, as two staff submitting near-simultaneously
+        // would produce — the static write lock serializes them so neither
+        // surfaces a DbUpdateException, and the later write wins (AD-4).
+        await using var dbA = CreateContext();
+        await using var dbB = CreateContext();
+        var serviceA = new PupilService(dbA);
+        var serviceB = new PupilService(dbB);
+
+        var requestA = new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = PupilStatus.ProvisionalLeaver,
+        };
+        var requestB = new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = PupilStatus.LeaverFeesInLieuDue,
+        };
+
+        var results = await Task.WhenAll(
+            serviceA.UpdatePupilAsync(pupil.Id, requestA),
+            serviceB.UpdatePupilAsync(pupil.Id, requestB));
+
+        Assert.NotNull(results[0]);
+        Assert.NotNull(results[1]);
+
+        await using var verifyDb = CreateContext();
+        var finalPupil = await verifyDb.Pupils.AsNoTracking().SingleAsync(p => p.Id == pupil.Id);
+        Assert.True(
+            finalPupil.Status is PupilStatus.ProvisionalLeaver or PupilStatus.LeaverFeesInLieuDue,
+            $"Expected the last write to win with one of the two submitted statuses, but got {finalPupil.Status}.");
+
+        // Both serialized writes must each leave their own ChangeHistory
+        // row -- one write must never clobber or skip the other's history.
+        var editHistories = await verifyDb.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .OrderBy(ch => ch.Id)
+            .ToListAsync();
+
+        Assert.Equal(2, editHistories.Count);
+        Assert.All(editHistories, h => Assert.Equal(nameof(Pupil.Status), h.FieldName));
+        Assert.Equal("Joiner", editHistories[0].PreviousValue);
+        var expectedSecondPreviousValue = editHistories[0].NewValue;
+        Assert.Equal(expectedSecondPreviousValue, editHistories[1].PreviousValue);
+        Assert.Equal(finalPupil.Status.ToDisplayName(), editHistories[1].NewValue);
+    }
+
     [Theory]
     [InlineData(PupilStatus.Joiner, true)]
     [InlineData(PupilStatus.PipelineOffered, false)]
