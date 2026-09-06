@@ -1,0 +1,52 @@
+@page "{id:int}"
+@model PupilAdmissions.Web.Pages.Pupils.EditModel
+@using PupilAdmissions.Domain
+@{
+    ViewData["Title"] = "Edit pupil";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<partial name="Shared/_ValidationSummary" />
+
+<form method="post" class="col-md-6">
+    <div class="mb-3">
+        <label asp-for="Input.Name" class="form-label"></label>
+        <input asp-for="Input.Name" class="form-control" autofocus />
+        <span asp-validation-for="Input.Name" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.YearGroup" class="form-label"></label>
+        <select asp-for="Input.YearGroup" class="form-select"
+                asp-items="Html.GetEnumSelectList<YearGroup>()">
+            <option value="">-- Select year group --</option>
+        </select>
+        <span asp-validation-for="Input.YearGroup" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.BoardingType" class="form-label"></label>
+        <select asp-for="Input.BoardingType" class="form-select"
+                asp-items="Html.GetEnumSelectList<BoardingType>()">
+            <option value="">-- Select boarding type --</option>
+        </select>
+        <span asp-validation-for="Input.BoardingType" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.Status" class="form-label"></label>
+        <select asp-for="Input.Status" class="form-select"
+                asp-items="Html.GetEnumSelectList<PupilStatus>()">
+            <option value="">-- Select status --</option>
+        </select>
+        <span asp-validation-for="Input.Status" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save changes</button>
+    <a asp-page="Index" class="btn btn-link">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

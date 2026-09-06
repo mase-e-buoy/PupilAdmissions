@@ -8,8 +8,9 @@ namespace PupilAdmissions.Application;
 /// The single write path for pupil records (AD-3). Every create/edit/
 /// status-change/archive operation for a <see cref="Pupil"/> must go
 /// through this class — no other code writes to <c>Pupil</c> or
-/// <c>ChangeHistory</c>. Story 2.1 implements only <see cref="CreatePupilAsync"/>;
-/// later stories (2.2-2.6) add edit/archive methods to this same service.
+/// <c>ChangeHistory</c>. Story 2.1 implements <see cref="CreatePupilAsync"/>;
+/// Story 2.2 adds <see cref="UpdatePupilAsync"/>; later stories (2.3-2.6)
+/// add archive/detail methods to this same service.
 /// </summary>
 public class PupilService
 {
@@ -64,16 +65,101 @@ public class PupilService
             var changedAtUtc = DateTime.UtcNow;
             var histories = new[]
             {
-                NewHistory(pupil, nameof(Pupil.Name), pupil.Name, changedAtUtc),
-                NewHistory(pupil, nameof(Pupil.YearGroup), pupil.YearGroup.ToDisplayName(), changedAtUtc),
-                NewHistory(pupil, nameof(Pupil.BoardingType), pupil.BoardingType.ToDisplayName(), changedAtUtc),
-                NewHistory(pupil, nameof(Pupil.Status), pupil.Status.ToDisplayName(), changedAtUtc),
+                NewHistory(pupil, nameof(Pupil.Name), null, pupil.Name, changedAtUtc),
+                NewHistory(pupil, nameof(Pupil.YearGroup), null, pupil.YearGroup.ToDisplayName(), changedAtUtc),
+                NewHistory(pupil, nameof(Pupil.BoardingType), null, pupil.BoardingType.ToDisplayName(), changedAtUtc),
+                NewHistory(pupil, nameof(Pupil.Status), null, pupil.Status.ToDisplayName(), changedAtUtc),
             };
             _db.ChangeHistories.AddRange(histories);
 
             await ExecuteWithRetryAsync(
                 () => _db.SaveChangesAsync(cancellationToken),
                 cancellationToken).ConfigureAwait(false);
+
+            return pupil;
+        }
+        finally
+        {
+            WriteLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Loads a single pupil tracked by the change tracker (unlike
+    /// <see cref="GetRosterAsync"/>'s <c>AsNoTracking()</c> read), so
+    /// <see cref="UpdatePupilAsync"/> can mutate the loaded entity in place
+    /// before <c>SaveChangesAsync</c>. Returns null when no pupil with the
+    /// given id exists, so the caller (the Edit page) can return 404.
+    /// </summary>
+    public async Task<Pupil?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+    {
+        return await _db.Pupils
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Edits an existing pupil in one transaction (FR-2, AD-3): diffs each
+    /// of the four editable fields against its current stored value and
+    /// appends exactly one <see cref="ChangeHistory"/> row per field that
+    /// actually changed — an unchanged field produces zero rows, and a
+    /// no-op save (nothing changed) writes zero history rows and leaves the
+    /// pupil row untouched. Status has no transition restriction — any
+    /// status may move to any other status. Reuses the same write
+    /// lock/retry machinery as <see cref="CreatePupilAsync"/> so there is
+    /// still only one write path (AD-3) and concurrent edits to the same
+    /// pupil never surface an error to the caller (AD-4).
+    /// </summary>
+    /// <returns>The updated pupil, or null if no pupil with <paramref name="id"/> exists.</returns>
+    public async Task<Pupil?> UpdatePupilAsync(int id, UpdatePupilRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        Validator.ValidateObject(request, new ValidationContext(request), validateAllProperties: true);
+
+        await WriteLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var pupil = await GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            if (pupil is null)
+            {
+                return null;
+            }
+
+            var changedAtUtc = DateTime.UtcNow;
+            var histories = new List<ChangeHistory>();
+
+            if (pupil.Name != request.Name)
+            {
+                histories.Add(NewHistory(pupil, nameof(Pupil.Name), pupil.Name, request.Name, changedAtUtc));
+                pupil.Name = request.Name;
+            }
+
+            if (pupil.YearGroup != request.YearGroup!.Value)
+            {
+                histories.Add(NewHistory(pupil, nameof(Pupil.YearGroup), pupil.YearGroup.ToDisplayName(), request.YearGroup.Value.ToDisplayName(), changedAtUtc));
+                pupil.YearGroup = request.YearGroup.Value;
+            }
+
+            if (pupil.BoardingType != request.BoardingType!.Value)
+            {
+                histories.Add(NewHistory(pupil, nameof(Pupil.BoardingType), pupil.BoardingType.ToDisplayName(), request.BoardingType.Value.ToDisplayName(), changedAtUtc));
+                pupil.BoardingType = request.BoardingType.Value;
+            }
+
+            if (pupil.Status != request.Status!.Value)
+            {
+                histories.Add(NewHistory(pupil, nameof(Pupil.Status), pupil.Status.ToDisplayName(), request.Status.Value.ToDisplayName(), changedAtUtc));
+                pupil.Status = request.Status.Value;
+            }
+
+            if (histories.Count > 0)
+            {
+                _db.ChangeHistories.AddRange(histories);
+
+                await ExecuteWithRetryAsync(
+                    () => _db.SaveChangesAsync(cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             return pupil;
         }
@@ -104,11 +190,11 @@ public class PupilService
             .ConfigureAwait(false);
     }
 
-    private static ChangeHistory NewHistory(Pupil pupil, string fieldName, string newValue, DateTime changedAtUtc) => new()
+    private static ChangeHistory NewHistory(Pupil pupil, string fieldName, string? previousValue, string newValue, DateTime changedAtUtc) => new()
     {
         Pupil = pupil,
         FieldName = fieldName,
-        PreviousValue = null,
+        PreviousValue = previousValue,
         NewValue = newValue,
         ActorId = ApplicationUser.SystemActorId,
         ChangedAtUtc = changedAtUtc,
