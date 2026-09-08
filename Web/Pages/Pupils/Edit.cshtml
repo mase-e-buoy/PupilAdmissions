@@ -43,10 +43,54 @@
         <span asp-validation-for="Input.Status" class="text-danger"></span>
     </div>
 
+    <div class="mb-3 form-check">
+        <input asp-for="Input.IsShortStay" class="form-check-input" id="isShortStay" />
+        <label asp-for="Input.IsShortStay" for="isShortStay" class="form-check-label"></label>
+    </div>
+
+    <div id="shortStayFields">
+        <div class="mb-3">
+            <label asp-for="Input.LengthOfStay" class="form-label"></label>
+            <input asp-for="Input.LengthOfStay" class="form-control" />
+            <span asp-validation-for="Input.LengthOfStay" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Input.AgentName" class="form-label"></label>
+            <input asp-for="Input.AgentName" class="form-control" />
+            <span asp-validation-for="Input.AgentName" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Input.DepositDetail" class="form-label"></label>
+            <input asp-for="Input.DepositDetail" class="form-control" />
+            <span asp-validation-for="Input.DepositDetail" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Input.Nationality" class="form-label"></label>
+            <input asp-for="Input.Nationality" class="form-control" />
+            <span asp-validation-for="Input.Nationality" class="text-danger"></span>
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Save changes</button>
     <a asp-page="Index" class="btn btn-link">Cancel</a>
 </form>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            var checkbox = document.getElementById('isShortStay');
+            var fields = document.getElementById('shortStayFields');
+
+            function toggle() {
+                fields.hidden = !checkbox.checked;
+            }
+
+            checkbox.addEventListener('change', toggle);
+            toggle();
+        })();
+    </script>
 }

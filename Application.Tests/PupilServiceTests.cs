@@ -475,4 +475,415 @@ public class PupilServiceTests : IDisposable
     {
         Assert.Equal(expected, status.CountsTowardRoll());
     }
+
+    // --- Story 2.3: short-stay and international/agent details (AD-9, FR4, FR6) ---
+
+    [Fact]
+    public async Task CreatePupilAsync_ShortStayWithAllDetailFields_CreatesDetailRowsAndWritesEightChangeHistoryRows()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Malala Yousafzai",
+            YearGroup = YearGroup.Year9,
+            BoardingType = BoardingType.FullBoard,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "6 weeks",
+            AgentName = "Global Agents Ltd",
+            DepositDetail = "GBP 500 paid",
+            Nationality = "Pakistani",
+        });
+
+        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal("6 weeks", shortStayDetail.LengthOfStay);
+        Assert.NotNull(shortStayDetail.InternationalDetailId);
+
+        var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
+        Assert.Equal("Global Agents Ltd", internationalDetail.AgentName);
+        Assert.Equal("GBP 500 paid", internationalDetail.DepositDetail);
+        Assert.Equal("Pakistani", internationalDetail.Nationality);
+        Assert.Equal(shortStayDetail.InternationalDetailId, internationalDetail.Id);
+
+        var histories = await db.ChangeHistories.Where(ch => ch.PupilId == pupil.Id).ToListAsync();
+        Assert.Equal(8, histories.Count);
+
+        var byField = histories.ToDictionary(h => h.FieldName);
+        Assert.Equal("6 weeks", byField[nameof(ShortStayDetail.LengthOfStay)].NewValue);
+        Assert.Equal("Global Agents Ltd", byField[nameof(InternationalDetail.AgentName)].NewValue);
+        Assert.Equal("GBP 500 paid", byField[nameof(InternationalDetail.DepositDetail)].NewValue);
+        Assert.Equal("Pakistani", byField[nameof(InternationalDetail.Nationality)].NewValue);
+
+        // IsShortStay itself is never its own ChangeHistory field (AD-9/FR4).
+        Assert.False(byField.ContainsKey(nameof(Pupil.IsShortStay)));
+    }
+
+    [Fact]
+    public async Task CreatePupilAsync_NonShortStay_WritesOnlyFourChangeHistoryRowsAndNoDetailRows()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Isaac Newton",
+            YearGroup = YearGroup.Year8,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = false,
+            // Detail fields submitted anyway (e.g. stale form state) -- must
+            // be ignored server-side, not merely hidden by CSS (FR4).
+            LengthOfStay = "2 weeks",
+            AgentName = "Should Be Ignored",
+        });
+
+        Assert.False(await db.ShortStayDetails.AnyAsync(s => s.PupilId == pupil.Id));
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+
+        var histories = await db.ChangeHistories.Where(ch => ch.PupilId == pupil.Id).ToListAsync();
+        Assert.Equal(4, histories.Count);
+    }
+
+    [Fact]
+    public async Task CreatePupilAsync_ShortStayMissingLengthOfStay_ThrowsAndSavesNothing()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        await Assert.ThrowsAsync<ValidationException>(() => service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Missing LengthOfStay",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = null,
+        }));
+
+        Assert.Empty(await db.Pupils.ToListAsync());
+        Assert.Empty(await db.ShortStayDetails.ToListAsync());
+        Assert.Empty(await db.ChangeHistories.ToListAsync());
+    }
+
+    /// <summary>
+    /// Regression test: a stray over-200-character value left in a detail
+    /// field (e.g. a JS-hidden field still submitted in the POST) must be
+    /// silently ignored server-side when <c>IsShortStay</c> is false, not
+    /// raise a <see cref="ValidationException"/> -- length limits on the
+    /// four detail fields only apply when short-stay is actually checked.
+    /// </summary>
+    [Fact]
+    public async Task CreatePupilAsync_NonShortStayWithOverLengthStrayValue_DoesNotThrow()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Stray Over-Length Value",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = false,
+            AgentName = new string('x', 250),
+        });
+
+        Assert.True(pupil.Id > 0);
+        Assert.False(await db.ShortStayDetails.AnyAsync(s => s.PupilId == pupil.Id));
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_IndependentFieldClear_ClearsOnlyThatFieldWithOneChangeHistoryRow()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Independent Clear",
+            YearGroup = YearGroup.Year10,
+            BoardingType = BoardingType.WeeklyBoard,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "1 term",
+            AgentName = "Agent A",
+            Nationality = "French",
+        });
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = true,
+            LengthOfStay = "1 term",
+            AgentName = null, // clear agent only
+            DepositDetail = null,
+            Nationality = "French", // untouched
+        });
+
+        Assert.NotNull(updated);
+
+        var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
+        Assert.Null(internationalDetail.AgentName);
+        Assert.Null(internationalDetail.DepositDetail);
+        Assert.Equal("French", internationalDetail.Nationality);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+
+        var history = Assert.Single(editHistories);
+        Assert.Equal(nameof(InternationalDetail.AgentName), history.FieldName);
+        Assert.Equal("Agent A", history.PreviousValue);
+        Assert.Null(history.NewValue);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_UnflagShortStay_DeletesDetailRowsAndRecordsOneClearHistoryRowPerPopulatedField()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Unflag Me",
+            YearGroup = YearGroup.Year11,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "3 weeks",
+            AgentName = "Agent B",
+            DepositDetail = "Deposit paid",
+            Nationality = "Spanish",
+        });
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = false,
+        });
+
+        Assert.NotNull(updated);
+        Assert.False(updated!.IsShortStay);
+
+        Assert.False(await db.ShortStayDetails.AnyAsync(s => s.PupilId == pupil.Id));
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+
+        Assert.Equal(4, editHistories.Count);
+        Assert.All(editHistories, h => Assert.Null(h.NewValue));
+
+        var byField = editHistories.ToDictionary(h => h.FieldName);
+        Assert.Equal("3 weeks", byField[nameof(ShortStayDetail.LengthOfStay)].PreviousValue);
+        Assert.Equal("Agent B", byField[nameof(InternationalDetail.AgentName)].PreviousValue);
+        Assert.Equal("Deposit paid", byField[nameof(InternationalDetail.DepositDetail)].PreviousValue);
+        Assert.Equal("Spanish", byField[nameof(InternationalDetail.Nationality)].PreviousValue);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_FlagPreviouslyNonShortStayPupilAsShortStay_CreatesDetailRows()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Newly Short-Stay",
+            YearGroup = YearGroup.Year6,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = false,
+        });
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = true,
+            LengthOfStay = "10 days",
+        });
+
+        Assert.NotNull(updated);
+        Assert.True(updated!.IsShortStay);
+
+        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal("10 days", shortStayDetail.LengthOfStay);
+        Assert.Null(shortStayDetail.InternationalDetailId);
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue == null && ch.FieldName == nameof(ShortStayDetail.LengthOfStay))
+            .ToListAsync();
+        var history = Assert.Single(editHistories);
+        Assert.Equal("10 days", history.NewValue);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_ShortStayMissingLengthOfStay_ThrowsAndLeavesPupilUnchanged()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Still Needs Length",
+            YearGroup = YearGroup.Year7,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "5 weeks",
+        });
+
+        await Assert.ThrowsAsync<ValidationException>(() => service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = true,
+            LengthOfStay = null,
+        }));
+
+        var reloaded = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal("5 weeks", reloaded.LengthOfStay);
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_ClearAllThreeInternationalFieldsWhileStillShortStay_DeletesInternationalDetailButKeepsShortStayDetail()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Clear All Three",
+            YearGroup = YearGroup.Year9,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "2 terms",
+            AgentName = "Agent C",
+            DepositDetail = "Deposit C",
+            Nationality = "German",
+        });
+
+        var exception = await Record.ExceptionAsync(() => service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = true,
+            LengthOfStay = "2 terms",
+            AgentName = null,
+            DepositDetail = null,
+            Nationality = null,
+        }));
+
+        Assert.Null(exception);
+
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+
+        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal("2 terms", shortStayDetail.LengthOfStay);
+        Assert.Null(shortStayDetail.InternationalDetailId);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue != null)
+            .ToListAsync();
+
+        // LengthOfStay unchanged -- only the three cleared international
+        // fields produce history rows.
+        Assert.Equal(3, editHistories.Count);
+        Assert.All(editHistories, h => Assert.Null(h.NewValue));
+    }
+
+    [Fact]
+    public async Task UpdatePupilAsync_AddFirstInternationalFieldToExistingShortStayPupil_CreatesInternationalDetail()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        // Already short-stay, but never had any agent/deposit/nationality
+        // value -- no InternationalDetail row exists yet.
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "First International Field",
+            YearGroup = YearGroup.Year10,
+            BoardingType = BoardingType.WeeklyBoard,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "1 month",
+        });
+
+        Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
+
+        var updated = await service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
+        {
+            Name = pupil.Name,
+            YearGroup = pupil.YearGroup,
+            BoardingType = pupil.BoardingType,
+            Status = pupil.Status,
+            IsShortStay = true,
+            LengthOfStay = "1 month",
+            AgentName = "Agent D",
+        });
+
+        Assert.NotNull(updated);
+
+        var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
+        Assert.Equal("Agent D", internationalDetail.AgentName);
+        Assert.Null(internationalDetail.DepositDetail);
+        Assert.Null(internationalDetail.Nationality);
+
+        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal(internationalDetail.Id, shortStayDetail.InternationalDetailId);
+
+        var editHistories = await db.ChangeHistories
+            .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue == null && ch.FieldName == nameof(InternationalDetail.AgentName))
+            .ToListAsync();
+        var history = Assert.Single(editHistories);
+        Assert.Equal("Agent D", history.NewValue);
+    }
+
+    [Fact]
+    public async Task CreatePupilAsync_DetailFieldsWithSurroundingWhitespace_AreTrimmedBeforeStorage()
+    {
+        await using var db = CreateContext();
+        var service = new PupilService(db);
+
+        var pupil = await service.CreatePupilAsync(new CreatePupilRequest
+        {
+            Name = "Trim Me",
+            YearGroup = YearGroup.Year8,
+            BoardingType = BoardingType.Day,
+            Status = PupilStatus.Joiner,
+            IsShortStay = true,
+            LengthOfStay = "  6 weeks  ",
+            AgentName = " Agent A ",
+            DepositDetail = " Deposit A ",
+            Nationality = " French ",
+        });
+
+        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
+        Assert.Equal("6 weeks", shortStayDetail.LengthOfStay);
+
+        var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
+        Assert.Equal("Agent A", internationalDetail.AgentName);
+        Assert.Equal("Deposit A", internationalDetail.DepositDetail);
+        Assert.Equal("French", internationalDetail.Nationality);
+    }
 }

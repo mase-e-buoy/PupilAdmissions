@@ -17,5 +17,9 @@ public interface IAppDbContext
 
     DbSet<ApplicationUser> ApplicationUsers { get; }
 
+    DbSet<ShortStayDetail> ShortStayDetails { get; }
+
+    DbSet<InternationalDetail> InternationalDetails { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
