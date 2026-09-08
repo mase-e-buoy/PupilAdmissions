@@ -15,7 +15,7 @@ public class ShortStayDetail
 
     public Pupil? Pupil { get; set; }
 
-    public string LengthOfStay { get; set; } = string.Empty;
+    public LengthOfStayTerms LengthOfStay { get; set; }
 
     public int? InternationalDetailId { get; set; }
 

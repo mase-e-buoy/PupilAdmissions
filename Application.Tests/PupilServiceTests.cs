@@ -491,14 +491,14 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.FullBoard,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "6 weeks",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = "Global Agents Ltd",
             DepositDetail = "GBP 500 paid",
             Nationality = "Pakistani",
         });
 
         var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
-        Assert.Equal("6 weeks", shortStayDetail.LengthOfStay);
+        Assert.Equal(LengthOfStayTerms.OneTerm, shortStayDetail.LengthOfStay);
         Assert.NotNull(shortStayDetail.InternationalDetailId);
 
         var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
@@ -511,7 +511,7 @@ public class PupilServiceTests : IDisposable
         Assert.Equal(8, histories.Count);
 
         var byField = histories.ToDictionary(h => h.FieldName);
-        Assert.Equal("6 weeks", byField[nameof(ShortStayDetail.LengthOfStay)].NewValue);
+        Assert.Equal(LengthOfStayTerms.OneTerm.ToDisplayName(), byField[nameof(ShortStayDetail.LengthOfStay)].NewValue);
         Assert.Equal("Global Agents Ltd", byField[nameof(InternationalDetail.AgentName)].NewValue);
         Assert.Equal("GBP 500 paid", byField[nameof(InternationalDetail.DepositDetail)].NewValue);
         Assert.Equal("Pakistani", byField[nameof(InternationalDetail.Nationality)].NewValue);
@@ -535,7 +535,7 @@ public class PupilServiceTests : IDisposable
             IsShortStay = false,
             // Detail fields submitted anyway (e.g. stale form state) -- must
             // be ignored server-side, not merely hidden by CSS (FR4).
-            LengthOfStay = "2 weeks",
+            LengthOfStay = LengthOfStayTerms.ThreeTerms,
             AgentName = "Should Be Ignored",
         });
 
@@ -608,7 +608,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.WeeklyBoard,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "1 term",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = "Agent A",
             Nationality = "French",
         });
@@ -620,7 +620,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = pupil.BoardingType,
             Status = pupil.Status,
             IsShortStay = true,
-            LengthOfStay = "1 term",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = null, // clear agent only
             DepositDetail = null,
             Nationality = "French", // untouched
@@ -656,7 +656,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "3 weeks",
+            LengthOfStay = LengthOfStayTerms.TwoTerms,
             AgentName = "Agent B",
             DepositDetail = "Deposit paid",
             Nationality = "Spanish",
@@ -685,7 +685,7 @@ public class PupilServiceTests : IDisposable
         Assert.All(editHistories, h => Assert.Null(h.NewValue));
 
         var byField = editHistories.ToDictionary(h => h.FieldName);
-        Assert.Equal("3 weeks", byField[nameof(ShortStayDetail.LengthOfStay)].PreviousValue);
+        Assert.Equal(LengthOfStayTerms.TwoTerms.ToDisplayName(), byField[nameof(ShortStayDetail.LengthOfStay)].PreviousValue);
         Assert.Equal("Agent B", byField[nameof(InternationalDetail.AgentName)].PreviousValue);
         Assert.Equal("Deposit paid", byField[nameof(InternationalDetail.DepositDetail)].PreviousValue);
         Assert.Equal("Spanish", byField[nameof(InternationalDetail.Nationality)].PreviousValue);
@@ -713,14 +713,14 @@ public class PupilServiceTests : IDisposable
             BoardingType = pupil.BoardingType,
             Status = pupil.Status,
             IsShortStay = true,
-            LengthOfStay = "10 days",
+            LengthOfStay = LengthOfStayTerms.ThreeTerms,
         });
 
         Assert.NotNull(updated);
         Assert.True(updated!.IsShortStay);
 
         var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
-        Assert.Equal("10 days", shortStayDetail.LengthOfStay);
+        Assert.Equal(LengthOfStayTerms.ThreeTerms, shortStayDetail.LengthOfStay);
         Assert.Null(shortStayDetail.InternationalDetailId);
         Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
 
@@ -728,7 +728,7 @@ public class PupilServiceTests : IDisposable
             .Where(ch => ch.PupilId == pupil.Id && ch.PreviousValue == null && ch.FieldName == nameof(ShortStayDetail.LengthOfStay))
             .ToListAsync();
         var history = Assert.Single(editHistories);
-        Assert.Equal("10 days", history.NewValue);
+        Assert.Equal(LengthOfStayTerms.ThreeTerms.ToDisplayName(), history.NewValue);
     }
 
     [Fact]
@@ -744,7 +744,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "5 weeks",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
         });
 
         await Assert.ThrowsAsync<ValidationException>(() => service.UpdatePupilAsync(pupil.Id, new UpdatePupilRequest
@@ -758,7 +758,7 @@ public class PupilServiceTests : IDisposable
         }));
 
         var reloaded = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
-        Assert.Equal("5 weeks", reloaded.LengthOfStay);
+        Assert.Equal(LengthOfStayTerms.OneTerm, reloaded.LengthOfStay);
     }
 
     [Fact]
@@ -774,7 +774,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "2 terms",
+            LengthOfStay = LengthOfStayTerms.TwoTerms,
             AgentName = "Agent C",
             DepositDetail = "Deposit C",
             Nationality = "German",
@@ -787,7 +787,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = pupil.BoardingType,
             Status = pupil.Status,
             IsShortStay = true,
-            LengthOfStay = "2 terms",
+            LengthOfStay = LengthOfStayTerms.TwoTerms,
             AgentName = null,
             DepositDetail = null,
             Nationality = null,
@@ -798,7 +798,7 @@ public class PupilServiceTests : IDisposable
         Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
 
         var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
-        Assert.Equal("2 terms", shortStayDetail.LengthOfStay);
+        Assert.Equal(LengthOfStayTerms.TwoTerms, shortStayDetail.LengthOfStay);
         Assert.Null(shortStayDetail.InternationalDetailId);
 
         var editHistories = await db.ChangeHistories
@@ -826,7 +826,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.WeeklyBoard,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "1 month",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
         });
 
         Assert.False(await db.InternationalDetails.AnyAsync(i => i.PupilId == pupil.Id));
@@ -838,7 +838,7 @@ public class PupilServiceTests : IDisposable
             BoardingType = pupil.BoardingType,
             Status = pupil.Status,
             IsShortStay = true,
-            LengthOfStay = "1 month",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = "Agent D",
         });
 
@@ -860,7 +860,7 @@ public class PupilServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreatePupilAsync_DetailFieldsWithSurroundingWhitespace_AreTrimmedBeforeStorage()
+    public async Task CreatePupilAsync_InternationalDetailFieldsWithSurroundingWhitespace_AreTrimmedBeforeStorage()
     {
         await using var db = CreateContext();
         var service = new PupilService(db);
@@ -872,14 +872,11 @@ public class PupilServiceTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "  6 weeks  ",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = " Agent A ",
             DepositDetail = " Deposit A ",
             Nationality = " French ",
         });
-
-        var shortStayDetail = await db.ShortStayDetails.AsNoTracking().SingleAsync(s => s.PupilId == pupil.Id);
-        Assert.Equal("6 weeks", shortStayDetail.LengthOfStay);
 
         var internationalDetail = await db.InternationalDetails.AsNoTracking().SingleAsync(i => i.PupilId == pupil.Id);
         Assert.Equal("Agent A", internationalDetail.AgentName);

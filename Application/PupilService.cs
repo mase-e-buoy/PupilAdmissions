@@ -82,7 +82,7 @@ public class PupilService
             // null and so is written as a fresh row.
             if (pupil.IsShortStay)
             {
-                ApplyShortStayDetails(pupil, request.LengthOfStay!, request.AgentName, request.DepositDetail, request.Nationality, histories, changedAtUtc);
+                ApplyShortStayDetails(pupil, request.LengthOfStay!.Value, request.AgentName, request.DepositDetail, request.Nationality, histories, changedAtUtc);
             }
 
             _db.ChangeHistories.AddRange(histories);
@@ -179,7 +179,7 @@ public class PupilService
 
             if (request.IsShortStay)
             {
-                ApplyShortStayDetails(pupil, request.LengthOfStay!, request.AgentName, request.DepositDetail, request.Nationality, histories, changedAtUtc);
+                ApplyShortStayDetails(pupil, request.LengthOfStay!.Value, request.AgentName, request.DepositDetail, request.Nationality, histories, changedAtUtc);
             }
             else
             {
@@ -237,23 +237,22 @@ public class PupilService
     /// loaded pupil that may already have them) so the two flows cannot
     /// drift apart.
     /// </summary>
-    private void ApplyShortStayDetails(Pupil pupil, string lengthOfStay, string? agentName, string? depositDetail, string? nationality, List<ChangeHistory> histories, DateTime changedAtUtc)
+    private void ApplyShortStayDetails(Pupil pupil, LengthOfStayTerms lengthOfStay, string? agentName, string? depositDetail, string? nationality, List<ChangeHistory> histories, DateTime changedAtUtc)
     {
         var shortStayDetail = pupil.ShortStayDetail;
         var previousLengthOfStay = shortStayDetail?.LengthOfStay;
-        var newLengthOfStay = lengthOfStay.Trim();
 
         if (shortStayDetail is null)
         {
-            shortStayDetail = new ShortStayDetail { Pupil = pupil, LengthOfStay = newLengthOfStay };
+            shortStayDetail = new ShortStayDetail { Pupil = pupil, LengthOfStay = lengthOfStay };
             _db.ShortStayDetails.Add(shortStayDetail);
             pupil.ShortStayDetail = shortStayDetail;
         }
 
-        if (previousLengthOfStay != newLengthOfStay)
+        if (previousLengthOfStay != lengthOfStay)
         {
-            histories.Add(NewHistory(pupil, nameof(ShortStayDetail.LengthOfStay), previousLengthOfStay, newLengthOfStay, changedAtUtc));
-            shortStayDetail.LengthOfStay = newLengthOfStay;
+            histories.Add(NewHistory(pupil, nameof(ShortStayDetail.LengthOfStay), previousLengthOfStay?.ToDisplayName(), lengthOfStay.ToDisplayName(), changedAtUtc));
+            shortStayDetail.LengthOfStay = lengthOfStay;
         }
 
         var normalizedAgentName = NormalizeOptional(agentName);
@@ -318,7 +317,7 @@ public class PupilService
 
         if (shortStayDetail is not null)
         {
-            histories.Add(NewHistory(pupil, nameof(ShortStayDetail.LengthOfStay), shortStayDetail.LengthOfStay, null, changedAtUtc));
+            histories.Add(NewHistory(pupil, nameof(ShortStayDetail.LengthOfStay), shortStayDetail.LengthOfStay.ToDisplayName(), null, changedAtUtc));
             shortStayDetail.InternationalDetail = null;
             pupil.ShortStayDetail = null;
             _db.ShortStayDetails.Remove(shortStayDetail);

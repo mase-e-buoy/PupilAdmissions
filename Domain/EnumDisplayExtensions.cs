@@ -16,6 +16,8 @@ public static class EnumDisplayExtensions
 
     public static string ToDisplayName(this PupilStatus status) => ToDisplayName((Enum)status);
 
+    public static string ToDisplayName(this LengthOfStayTerms terms) => ToDisplayName((Enum)terms);
+
     private static string ToDisplayName(Enum value)
     {
         var member = value.GetType().GetField(value.ToString());

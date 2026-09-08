@@ -203,7 +203,7 @@ public class EditModelTests : IDisposable
             BoardingType = BoardingType.FullBoard,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "4 weeks",
+            LengthOfStay = LengthOfStayTerms.OneTerm,
             AgentName = "Silk Road Agents",
             DepositDetail = "Paid in full",
             Nationality = "Italian",
@@ -214,7 +214,7 @@ public class EditModelTests : IDisposable
 
         Assert.IsType<PageResult>(result);
         Assert.True(model.Input.IsShortStay);
-        Assert.Equal("4 weeks", model.Input.LengthOfStay);
+        Assert.Equal(LengthOfStayTerms.OneTerm, model.Input.LengthOfStay);
         Assert.Equal("Silk Road Agents", model.Input.AgentName);
         Assert.Equal("Paid in full", model.Input.DepositDetail);
         Assert.Equal("Italian", model.Input.Nationality);
@@ -266,7 +266,7 @@ public class EditModelTests : IDisposable
             BoardingType = BoardingType.WeeklyBoard,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = "3 weeks",
+            LengthOfStay = LengthOfStayTerms.TwoTerms,
             AgentName = "Agent B",
         });
         var model = new EditModel(service)
@@ -317,7 +317,7 @@ public class EditModelTests : IDisposable
                 BoardingType = pupil.BoardingType,
                 Status = pupil.Status,
                 IsShortStay = true,
-                LengthOfStay = string.Empty,
+                LengthOfStay = null,
             },
         };
         model.ModelState.AddModelError("Input.LengthOfStay", "Length of stay is required for short-stay pupils.");
@@ -347,7 +347,7 @@ public class EditModelTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = string.Empty,
+            LengthOfStay = null,
         };
 
         var results = new List<ValidationResult>();

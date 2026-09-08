@@ -51,7 +51,10 @@
     <div id="shortStayFields">
         <div class="mb-3">
             <label asp-for="Input.LengthOfStay" class="form-label"></label>
-            <input asp-for="Input.LengthOfStay" class="form-control" />
+            <select asp-for="Input.LengthOfStay" class="form-select"
+                    asp-items="Html.GetEnumSelectList<LengthOfStayTerms>()">
+                <option value="">-- Select length of stay --</option>
+            </select>
             <span asp-validation-for="Input.LengthOfStay" class="text-danger"></span>
         </div>
 

@@ -49,7 +49,7 @@ public class AppDbContext : DbContext, IAppDbContext
         {
             entity.ToTable("ShortStayDetails");
             entity.HasKey(s => s.Id);
-            entity.Property(s => s.LengthOfStay).IsRequired().HasMaxLength(200);
+            entity.Property(s => s.LengthOfStay).HasConversion<string>().IsRequired();
 
             // 0..1 per Pupil (AD-9): unique FK makes the one-to-one explicit.
             entity.HasIndex(s => s.PupilId).IsUnique();

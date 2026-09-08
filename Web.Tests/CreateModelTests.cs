@@ -126,7 +126,7 @@ public class CreateModelTests : IDisposable
                 BoardingType = BoardingType.FullBoard,
                 Status = PupilStatus.Joiner,
                 IsShortStay = true,
-                LengthOfStay = "4 weeks",
+                LengthOfStay = LengthOfStayTerms.OneTerm,
                 AgentName = "Silk Road Agents",
                 DepositDetail = "Paid in full",
                 Nationality = "Italian",
@@ -161,7 +161,7 @@ public class CreateModelTests : IDisposable
                 BoardingType = BoardingType.Day,
                 Status = PupilStatus.Joiner,
                 IsShortStay = true,
-                LengthOfStay = string.Empty,
+                LengthOfStay = null,
             },
         };
         model.ModelState.AddModelError("Input.LengthOfStay", "Length of stay is required for short-stay pupils.");
@@ -190,7 +190,7 @@ public class CreateModelTests : IDisposable
             BoardingType = BoardingType.Day,
             Status = PupilStatus.Joiner,
             IsShortStay = true,
-            LengthOfStay = string.Empty,
+            LengthOfStay = null,
         };
 
         var results = new List<ValidationResult>();
@@ -218,7 +218,7 @@ public class CreateModelTests : IDisposable
                 BoardingType = BoardingType.Day,
                 Status = PupilStatus.Joiner,
                 IsShortStay = false,
-                LengthOfStay = "Should be ignored",
+                LengthOfStay = LengthOfStayTerms.ThreeTerms,
                 AgentName = "Should also be ignored",
             },
         };

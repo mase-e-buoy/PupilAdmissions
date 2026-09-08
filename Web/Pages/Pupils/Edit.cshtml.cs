@@ -115,7 +115,7 @@ public class EditModel : PageModel
         public bool IsShortStay { get; set; }
 
         [Display(Name = "Length of stay")]
-        public string? LengthOfStay { get; set; }
+        public LengthOfStayTerms? LengthOfStay { get; set; }
 
         [Display(Name = "Agent name")]
         public string? AgentName { get; set; }
@@ -142,16 +142,10 @@ public class EditModel : PageModel
                 yield break;
             }
 
-            if (string.IsNullOrWhiteSpace(LengthOfStay))
+            if (LengthOfStay is null)
             {
                 yield return new ValidationResult(
                     "Length of stay is required for short-stay pupils.",
-                    new[] { nameof(LengthOfStay) });
-            }
-            else if (LengthOfStay.Length > 200)
-            {
-                yield return new ValidationResult(
-                    "Length of stay must be at most 200 characters.",
                     new[] { nameof(LengthOfStay) });
             }
 
