@@ -49,3 +49,37 @@ body {
   margin-bottom: 0;
   padding-left: 1.25rem;
 }
+
+/* Pupils/Index.cshtml: one <table> per year group. Fixed layout with shared
+   column widths keeps columns aligned across tables in the "All year
+   groups" view, where each table's own content would otherwise size its
+   columns independently. */
+.pupil-roster-table {
+  table-layout: fixed;
+}
+
+.pupil-roster-table th:nth-child(1),
+.pupil-roster-table td:nth-child(1) {
+  width: 45%;
+}
+
+.pupil-roster-table th:nth-child(2),
+.pupil-roster-table td:nth-child(2) {
+  width: 25%;
+}
+
+.pupil-roster-table th:nth-child(3),
+.pupil-roster-table td:nth-child(3) {
+  width: 20%;
+}
+
+.pupil-roster-table th:nth-child(4),
+.pupil-roster-table td:nth-child(4) {
+  width: 10%;
+}
+
+.pupil-roster-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
